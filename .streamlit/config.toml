@@ -1,0 +1,13 @@
+[theme]
+base = "light"
+primaryColor = "#9E6B4B"             # muted clay accent
+backgroundColor = "#FBFAF7"          # warm paper
+secondaryBackgroundColor = "#F1EFE8" # sidebar / inputs / cards
+textColor = "#23211C"                # warm ink
+font = "sans serif"
+
+[client]
+toolbarMode = "minimal"
+
+[server]
+headless = true

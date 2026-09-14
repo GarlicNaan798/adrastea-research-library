@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+  <!-- Adrastea mark: an "A" whose crossbar is an orbit, with the moon on it -->
+  <path d="M18 86 L50 15 L82 86" fill="none" stroke="#23211C" stroke-width="7"
+        stroke-linecap="round" stroke-linejoin="round"/>
+  <ellipse cx="50" cy="56" rx="40" ry="13" fill="none" stroke="#9E6B4B" stroke-width="3.6"
+           transform="rotate(-18 50 56)"/>
+  <circle cx="88" cy="44" r="5.4" fill="#9E6B4B"/>
+</svg>

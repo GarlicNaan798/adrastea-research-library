@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 170" font-family="'Fraunces','Georgia',serif">
+  <defs>
+    <style>@import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600&amp;family=Inter:wght@500&amp;display=swap');</style>
+  </defs>
+  <rect width="640" height="170" fill="#FBFAF7"/>
+  <!-- mark -->
+  <g transform="translate(24,38) scale(0.94)">
+    <path d="M18 86 L50 15 L82 86" fill="none" stroke="#23211C" stroke-width="7"
+          stroke-linecap="round" stroke-linejoin="round"/>
+    <ellipse cx="50" cy="56" rx="40" ry="13" fill="none" stroke="#9E6B4B" stroke-width="3.6"
+             transform="rotate(-18 50 56)"/>
+    <circle cx="88" cy="44" r="5.4" fill="#9E6B4B"/>
+  </g>
+  <!-- wordmark -->
+  <text x="150" y="98" font-size="60" font-weight="600" fill="#23211C" letter-spacing="-0.5">Adrastea</text>
+  <text x="153" y="126" font-family="'Inter','Segoe UI',Helvetica,Arial,sans-serif" font-size="13" letter-spacing="6" fill="#9E6B4B">RESEARCH&#160;&#160;FOUNDATION</text>
+</svg>
