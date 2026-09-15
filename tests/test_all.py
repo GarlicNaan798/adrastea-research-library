@@ -79,6 +79,27 @@ def test_db_roundtrip():
             os.remove(path)
 
 
+def test_clean_markup():
+    # Europe PMC entity-encoded markup must not reach the UI as literal tags
+    assert sources._clean("&lt;b&gt;Simulated&lt;/b&gt; microgravity") == "Simulated microgravity"
+    assert sources._clean("<i>in vitro</i> bone   loss") == "in vitro bone loss"
+
+
+def test_query_builders():
+    # space scope is opt-out; women lens is opt-in
+    assert "microgravity" in sources._epmc_query("bone loss", True, False)
+    assert "microgravity" not in sources._epmc_query("bone loss", False, False)
+    q = sources._epmc_query("bone loss", True, True)
+    assert "microgravity" in q and "reproductive" in q
+
+    # arXiv ANDs the user's own words (precision), then AND-groups the scope
+    aq = sources._arxiv_query("bone density loss", True, False)
+    assert "all:bone AND all:density AND all:loss" in aq
+    assert "all:microgravity" in aq
+    # short words (<=2 chars) are dropped so they don't blow up the query
+    assert sources._arxiv_query("of a", False, False) == "all:*"
+
+
 def test_export():
     a = sources._parse_epmc(EPMC_SAMPLE)[0]
     b = sources._parse_arxiv(ARXIV_SAMPLE)[0]

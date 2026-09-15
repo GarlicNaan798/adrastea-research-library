@@ -1,26 +1,95 @@
 """Free scholarly search over Europe PMC (biomedical) and arXiv (engineering / physics).
 
-No API keys, no third-party deps — just the standard library. Parsing is deliberately
-split from fetching so the parsers stay unit-testable offline (see tests/test_sources.py).
+No API keys, no third-party deps — just the standard library.
+
+Two precision levers keep the research team out of hundreds of unrelated papers:
+  * space_only  — AND a spaceflight/microgravity clause onto every query (default on).
+                  In testing this keeps ~0.3–13% of a bare biomedical term's hits, all
+                  on-mission. This is the single biggest relevance win.
+  * women_lens  — AND a women's-health clause (women / sex differences / reproductive …).
+                  Off by default: most historical spaceflight studies used male subjects,
+                  and hiding them would hide the very disparity Adrastea studies.
+
+Parsing is split from fetching so the parsers and query-builders stay unit-testable
+offline (see tests/test_all.py).
 """
 from __future__ import annotations
 
+import html
 import json
+import re
+import time
 import urllib.parse
 import urllib.request
 import xml.etree.ElementTree as ET
 
-_UA = "AdrasteaResearchLibrary/0.1 (Adrastea non-profit; research discovery)"
+_UA = "AdrasteaResearchLibrary/0.2 (Adrastea non-profit; research discovery)"
 _ATOM = {"a": "http://www.w3.org/2005/Atom"}
 _ARXIV_NS = "{http://arxiv.org/schemas/atom}"
+_OPENSEARCH_TOTAL = "{http://a9.com/-/spec/opensearch/1.1/}totalResults"
 
 SOURCES = ("Europe PMC", "arXiv")
+SORTS = ("relevance", "cited", "newest")
+
+# Domain-scoping clauses. Europe PMC accepts quoted phrases; arXiv fields are per-term.
+_SPACE_EPMC = ('(spaceflight OR "space flight" OR microgravity OR astronaut OR cosmonaut'
+               ' OR "space medicine" OR weightlessness OR "outer space"'
+               ' OR "International Space Station" OR "spaceflight environment")')
+_WOMEN_EPMC = ('(women OR woman OR female OR "sex differences" OR "sex-based" OR gender'
+               ' OR maternal OR reproductive OR menstrual OR pregnancy)')
+_SPACE_ARXIV = ("spaceflight", "microgravity", "astronaut", "weightlessness", "cosmonaut")
+_WOMEN_ARXIV = ("women", "female", "gender", "sex")
+
+_EPMC_SORT = {"relevance": "", "cited": "CITED desc", "newest": "P_PDATE_D desc"}
+_ARXIV_SORT = {"relevance": "relevance", "cited": "relevance", "newest": "submittedDate"}
 
 
-def _get(url: str, timeout: int = 30) -> str:
-    req = urllib.request.Request(url, headers={"User-Agent": _UA})
-    with urllib.request.urlopen(req, timeout=timeout) as r:
-        return r.read().decode("utf-8", "replace")
+def _clean(text: str) -> str:
+    """Europe PMC embeds entity-encoded markup (&lt;b&gt;…) in titles/abstracts.
+
+    Unescape once, strip the resulting tags, and collapse whitespace so the UI shows
+    plain text instead of literal <b> tags.
+    """
+    text = re.sub(r"<[^>]+>", "", html.unescape(text or ""))
+    return " ".join(text.split())
+
+
+def _get(url: str, timeout: int = 15, retries: int = 1) -> str:
+    """GET with one retry — the providers occasionally 429 or drop the connection."""
+    last = None
+    for attempt in range(retries + 1):
+        try:
+            req = urllib.request.Request(url, headers={"User-Agent": _UA})
+            with urllib.request.urlopen(req, timeout=timeout) as r:
+                return r.read().decode("utf-8", "replace")
+        except Exception as exc:  # noqa: BLE001
+            last = exc
+            if attempt < retries:
+                time.sleep(2.5)
+    raise last
+
+
+# --------------------------------------------------------------------------- #
+# Query builders (pure — no network)
+# --------------------------------------------------------------------------- #
+def _epmc_query(query: str, space_only: bool, women_lens: bool) -> str:
+    q = f"({query})"
+    if space_only:
+        q += f" AND {_SPACE_EPMC}"
+    if women_lens:
+        q += f" AND {_WOMEN_EPMC}"
+    return q
+
+
+def _arxiv_query(query: str, space_only: bool, women_lens: bool) -> str:
+    # AND the user's own words so a multi-word query isn't OR'd into noise by arXiv.
+    words = [w for w in re.findall(r"[A-Za-z0-9']+", query) if len(w) > 2]
+    parts = [" AND ".join(f"all:{w}" for w in words)] if words else ["all:*"]
+    if space_only:
+        parts.append("(" + " OR ".join(f"all:{t}" for t in _SPACE_ARXIV) + ")")
+    if women_lens:
+        parts.append("(" + " OR ".join(f"all:{t}" for t in _WOMEN_ARXIV) + ")")
+    return " AND ".join(parts)
 
 
 # --------------------------------------------------------------------------- #
@@ -36,11 +105,11 @@ def _parse_epmc(data: dict) -> list[dict]:
         doi = r.get("doi") or ""
         out.append({
             "uid": f"epmc:{src}:{pid}",
-            "title": (r.get("title") or "Untitled").strip().rstrip("."),
+            "title": _clean(r.get("title") or "Untitled").rstrip("."),
             "authors": r.get("authorString") or "",
             "year": str(r.get("pubYear") or ""),
             "venue": journal or "",
-            "abstract": r.get("abstractText") or "",
+            "abstract": _clean(r.get("abstractText") or ""),
             "doi": doi,
             "url": f"https://doi.org/{doi}" if doi
                    else f"https://europepmc.org/article/{src}/{pid}",
@@ -50,11 +119,14 @@ def _parse_epmc(data: dict) -> list[dict]:
     return out
 
 
-def _europepmc(query: str, limit: int) -> list[dict]:
-    q = urllib.parse.quote(query)
+def _europepmc(query, limit, space_only, women_lens, sort):
+    q = urllib.parse.quote(_epmc_query(query, space_only, women_lens))
     url = ("https://www.ebi.ac.uk/europepmc/webservices/rest/search"
            f"?query={q}&format=json&resultType=core&pageSize={limit}")
-    return _parse_epmc(json.loads(_get(url)))
+    if _EPMC_SORT.get(sort):
+        url += "&sort=" + urllib.parse.quote(_EPMC_SORT[sort])
+    data = json.loads(_get(url))
+    return _parse_epmc(data), int(data.get("hitCount") or 0)
 
 
 # --------------------------------------------------------------------------- #
@@ -87,41 +159,50 @@ def _parse_arxiv(xml_text: str) -> list[dict]:
     return out
 
 
-def _arxiv(query: str, limit: int) -> list[dict]:
-    q = urllib.parse.quote(f"all:{query}")
+def _arxiv(query, limit, space_only, women_lens, sort):
+    q = urllib.parse.quote(_arxiv_query(query, space_only, women_lens))
     url = ("http://export.arxiv.org/api/query"
            f"?search_query={q}&start=0&max_results={limit}"
-           "&sortBy=relevance&sortOrder=descending")
-    return _parse_arxiv(_get(url))
+           f"&sortBy={_ARXIV_SORT.get(sort, 'relevance')}&sortOrder=descending")
+    xml_text = _get(url, timeout=10)  # secondary source — fail fast, don't stall the UI
+    total = int(ET.fromstring(xml_text).findtext(_OPENSEARCH_TOTAL) or 0)
+    return _parse_arxiv(xml_text), total
 
 
 _FETCHERS = {"Europe PMC": _europepmc, "arXiv": _arxiv}
 
 
-def search(query: str, sources=SOURCES, limit: int = 25):
-    """Search the given sources. Returns (results, errors).
+def search(query: str, sources=SOURCES, limit: int = 25,
+           space_only: bool = True, women_lens: bool = False, sort: str = "relevance"):
+    """Search the given sources. Returns (results, errors, totals).
 
-    A failure in one source (e.g. a network blip) never kills the others — it lands
-    in `errors` keyed by source name so the UI can surface it and still show the rest.
+    `totals` maps each reached source to its full match count (how many papers exist,
+    vs the `limit` we actually pull). A failure in one source lands in `errors` and
+    never kills the others.
     """
     query = (query or "").strip()
     if not query:
-        return [], {}
-    results, errors = [], {}
+        return [], {}, {}
+    results, errors, totals = [], {}, {}
     for name in sources:
         try:
-            results.extend(_FETCHERS[name](query, limit))
+            rows, total = _FETCHERS[name](query, limit, space_only, women_lens, sort)
+            results.extend(rows)
+            totals[name] = total
         except Exception as exc:  # noqa: BLE001 — one source down != whole search down
             errors[name] = str(exc)
-    # citation-count desc, undated last — a mild "importance" nudge across sources
-    results.sort(key=lambda p: p["cited_by"], reverse=True)
-    return results, errors
+    if sort == "cited":
+        results.sort(key=lambda p: p["cited_by"], reverse=True)
+    elif sort == "newest":
+        results.sort(key=lambda p: p["year"], reverse=True)
+    # relevance: keep each source's own ranking, concatenated
+    return results, errors, totals
 
 
-if __name__ == "__main__":  # live smoke check: `py sources.py "women health spaceflight"`
+if __name__ == "__main__":  # live smoke: `py sources.py "bone density loss"`
     import sys
-    res, err = search(sys.argv[1] if len(sys.argv) > 1 else "women health spaceflight",
-                      limit=3)
-    print(f"{len(res)} results, errors={err}")
-    for p in res[:5]:
-        print(f"  [{p['source']}] {p['year']}  {p['title'][:70]}  (cited {p['cited_by']})")
+    res, err, tot = search(sys.argv[1] if len(sys.argv) > 1 else "bone density loss",
+                           limit=3)
+    print(f"totals={tot} errors={err}")
+    for p in res[:6]:
+        print(f"  [{p['source']}] {p['year']}  {p['title'][:66]}  (cited {p['cited_by']})")

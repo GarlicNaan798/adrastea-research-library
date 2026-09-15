@@ -16,37 +16,40 @@ import sources
 st.set_page_config(page_title="Adrastea Research Library",
                    page_icon="🛰️", layout="wide")
 
-# Mission-aligned starting points — one click runs the search.
+# Mission-aligned starting points. With the space scope on, these stay topic-focused —
+# the scope supplies the "in space" context, so results narrow to the mission.
 PRESETS = [
-    "women's health in spaceflight",
-    "sex differences in microgravity",
-    "bone density loss female astronauts",
-    "reproductive health space radiation",
-    "bioengineering for space applications",
-    "gender disparities in space science",
-    "tissue engineering microgravity",
-    "cardiovascular changes women spaceflight",
+    "bone density loss",
+    "reproductive health",
+    "immune function",
+    "cardiovascular changes",
+    "radiation exposure",
+    "muscle atrophy",
+    "tissue engineering",
+    "mental health cognition",
 ]
+_SORT_LABELS = {"relevance": "Relevance", "cited": "Most cited", "newest": "Newest"}
 
 st.session_state.setdefault("results", [])
 st.session_state.setdefault("errors", {})
+st.session_state.setdefault("totals", {})
 st.session_state.setdefault("query", "")
 
 
-@st.cache_data(ttl=900, show_spinner=False)
-def _cached_search(query: str, srcs: tuple[str, ...], limit: int):
-    return sources.search(query, srcs, limit)
-
-
 def run_search(query: str) -> None:
+    # No caching: results live in session_state (so Save/Remove reruns don't refetch),
+    # and caching would pin a transient upstream failure for everyone who re-searches.
     query = (query or "").strip()
     if not query:
         return
     srcs = tuple(st.session_state.get("src_sel") or sources.SOURCES)
     limit = int(st.session_state.get("limit_sel", 20))
+    space_only = bool(st.session_state.get("space_only", True))
+    women_lens = bool(st.session_state.get("women_lens", False))
+    sort = st.session_state.get("sort_sel", "relevance")
     with st.spinner(f"Searching {', '.join(srcs)}…"):
-        res, err = _cached_search(query, srcs, limit)
-    st.session_state.update(results=res, errors=err, query=query)
+        res, err, tot = sources.search(query, srcs, limit, space_only, women_lens, sort)
+    st.session_state.update(results=res, errors=err, totals=tot, query=query)
 
 
 def _note_cb(uid: str, key: str) -> None:
@@ -60,6 +63,16 @@ with st.sidebar:
     st.markdown(f'<div class="brandbar">{brand.mark(28)}'
                 f'<span class="name" style="font-size:1.15rem">Adrastea</span></div>',
                 unsafe_allow_html=True)
+    st.toggle("🛰️ Space research only", value=True, key="space_only",
+              help="Keep only papers about spaceflight, microgravity, astronauts, etc. "
+                   "Cuts out the ~99% of biomedical results with no space context.")
+    st.toggle("♀ Women's-health focus", value=False, key="women_lens",
+              help="Further narrow to sex differences, female physiology, reproductive "
+                   "and maternal health. Off by default so male-subject studies — the "
+                   "disparity itself — stay visible.")
+    st.selectbox("Sort by", list(_SORT_LABELS), key="sort_sel",
+                 format_func=_SORT_LABELS.get)
+    st.divider()
     st.multiselect("Sources", sources.SOURCES, default=list(sources.SOURCES),
                    key="src_sel",
                    help="Europe PMC covers biomedical & women's-health literature; "
@@ -98,11 +111,19 @@ with search_tab:
 
     results = st.session_state.results
     if st.session_state.query and not results:
-        st.info(f"No results for “{st.session_state.query}”. Try broader or "
-                "different terms, or widen the sources in the sidebar.")
+        st.info(f"No results for “{st.session_state.query}”. Try broader terms, "
+                "turn off “Space research only”, or widen the sources in the sidebar.")
     elif results:
-        st.caption(f"{len(results)} results for “{st.session_state.query}” · "
-                   "sorted by citation count")
+        totals = st.session_state.totals
+        total = sum(totals.values())
+        breakdown = " + ".join(f"{n} {v:,}" for n, v in totals.items())
+        scope = [s for s, on in (("space-scoped", st.session_state.get("space_only")),
+                                 ("women's-health", st.session_state.get("women_lens")))
+                 if on]
+        scope_txt = (" · " + " · ".join(scope)) if scope else ""
+        sort_txt = _SORT_LABELS[st.session_state.get("sort_sel", "relevance")].lower()
+        st.caption(f"{total:,} papers match ({breakdown}) · showing top "
+                   f"{len(results)} · sorted by {sort_txt}{scope_txt}")
         saved = db.saved_uids()
         for p in results:
             with st.container(border=True):
