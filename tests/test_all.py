@@ -94,25 +94,30 @@ def test_preprint_label():
     assert p["venue"] == "bioRxiv"  # falls back to server name when no journal
 
 
-ADS_SAMPLE = {"response": {"numFound": 4321, "docs": [
-    {"bibcode": "2024npjMG..10...5S", "title": ["Bone loss in <b>microgravity</b>"],
-     "author": ["Smith, A.", "Doe, J."], "year": "2024", "pub": "npj Microgravity",
-     "doi": ["10.1038/s41526-024-00001"], "abstract": "We study bone.",
-     "citation_count": 12},
-    {"title": ["no bibcode -> skipped"]},
-]}}
+OPENALEX_SAMPLE = {"meta": {"count": 627}, "results": [
+    {"id": "https://openalex.org/W123", "doi": "https://doi.org/10.1/abc",
+     "display_name": "Bone loss in microgravity.", "publication_year": 2024,
+     "cited_by_count": 12,
+     "authorships": [{"author": {"display_name": "A. Smith"}},
+                     {"author": {"display_name": "J. Doe"}}],
+     "primary_location": {"source": {"display_name": "npj Microgravity"}},
+     # inverted index, deliberately out of order to prove reconstruction
+     "abstract_inverted_index": {"loss": [1], "Bone": [0], "in": [2], "space": [3]}},
+    {"doi": "https://doi.org/10.1/no-id"},  # no id -> skipped
+]}
 
 
-def test_parse_ads():
-    rows = sources._parse_ads(ADS_SAMPLE)
-    assert len(rows) == 1, "doc without a bibcode must be skipped"
+def test_parse_openalex():
+    rows = sources._parse_openalex(OPENALEX_SAMPLE)
+    assert len(rows) == 1, "work without an id must be skipped"
     p = rows[0]
-    assert p["uid"] == "ads:2024npjMG..10...5S"
-    assert p["source"] == "NASA ADS"
-    assert p["title"] == "Bone loss in microgravity"  # markup stripped
-    assert p["authors"] == "Smith, A., Doe, J."
+    assert p["uid"] == "openalex:W123"
+    assert p["source"] == "OpenAlex"
+    assert p["doi"] == "10.1/abc"  # https://doi.org/ prefix stripped
+    assert p["venue"] == "npj Microgravity"
+    assert p["authors"] == "A. Smith, J. Doe"
+    assert p["abstract"] == "Bone loss in space"  # inverted index rebuilt in order
     assert p["cited_by"] == 12
-    assert p["url"].startswith("https://ui.adsabs.harvard.edu/abs/")
 
 
 def test_clean_markup():

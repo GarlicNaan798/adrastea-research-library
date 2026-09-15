@@ -12,11 +12,11 @@ it to CSV or BibTeX. No account, no tracking, no API keys.
 
 ## What it does
 
-- **Search several open databases at once**
+- **Search four open databases at once** (no keys, no signup)
   - **Europe PMC** — biomedical & clinical literature (women's health, physiology, medicine)
   - **bioRxiv / medRxiv** — preprints, catching brand-new work before journal publication
   - **arXiv** — bioengineering, physics, and space-science preprints
-  - **NASA ADS** *(optional, free key)* — the astrophysics & space-science index
+  - **OpenAlex** — ~240M works across all publishers, with citation data
 - **Mission-aligned starting points** — one-click searches like *sex differences in
   microgravity*, *bone density loss in female astronauts*, *reproductive health & space
   radiation*, *gender disparities in space science*.
@@ -39,19 +39,7 @@ py -m streamlit run app.py
 ```
 
 It opens in your browser at `http://localhost:8501`. (On macOS/Linux use `python3`
-instead of `py`.)
-
-### Optional: enable NASA ADS
-
-NASA ADS indexes astrophysics & space-science literature. To add it as a source:
-
-1. Sign in (free) at [ui.adsabs.harvard.edu](https://ui.adsabs.harvard.edu/) →
-   **Account → Settings → API Token → Generate a new key**.
-2. Copy `.streamlit/secrets.toml.example` to `.streamlit/secrets.toml` and paste your
-   token into `ADS_API_TOKEN` (or set an `ADS_API_TOKEN` environment variable).
-
-`secrets.toml` is git-ignored, so your token is never committed. Without a token, the
-app simply doesn't show NASA ADS as a source — everything else works.
+instead of `py`.) No API keys or accounts are needed — all four sources are open.
 
 ## Project layout
 

@@ -1,12 +1,12 @@
 """Free scholarly search across several open databases. Standard library only.
 
-Sources:
+Sources (all keyless):
   * Europe PMC       — published biomedical & clinical literature.
   * bioRxiv/medRxiv  — preprints, via Europe PMC's preprint index (SRC:PPR filtered
                        to those two servers). Catches new work before journal publication.
   * arXiv            — bioengineering / physics / space-science preprints.
-  * NASA ADS         — astrophysics & space index (needs a free API token; only offered
-                       when one is configured).
+  * OpenAlex         — ~240M works across all publishers, with citation data. Broadens
+                       coverage of women's-health / disparities / bioengineering literature.
 
 Two precision levers keep the research team out of hundreds of unrelated papers:
   * space_only  — AND a spaceflight/microgravity clause onto every query (default on).
@@ -33,8 +33,7 @@ _ATOM = {"a": "http://www.w3.org/2005/Atom"}
 _ARXIV_NS = "{http://arxiv.org/schemas/atom}"
 _OPENSEARCH_TOTAL = "{http://a9.com/-/spec/opensearch/1.1/}totalResults"
 
-# Keyless sources, always available. NASA ADS is appended by the app when a token exists.
-SOURCES = ("Europe PMC", "bioRxiv/medRxiv", "arXiv")
+SOURCES = ("Europe PMC", "bioRxiv/medRxiv", "arXiv", "OpenAlex")
 SORTS = ("relevance", "cited", "newest")
 
 # Domain-scoping clauses. Europe PMC and NASA ADS share boolean+phrase syntax; arXiv fields
@@ -50,7 +49,8 @@ _PREPRINT_FILTER = '(SRC:PPR) AND (PUBLISHER:"bioRxiv" OR PUBLISHER:"medRxiv")'
 
 _EPMC_SORT = {"relevance": "", "cited": "CITED desc", "newest": "P_PDATE_D desc"}
 _ARXIV_SORT = {"relevance": "relevance", "cited": "relevance", "newest": "submittedDate"}
-_ADS_SORT = {"relevance": "", "cited": "citation_count desc", "newest": "date desc"}
+_OPENALEX_SORT = {"relevance": "relevance_score:desc", "cited": "cited_by_count:desc",
+                  "newest": "publication_date:desc"}
 
 
 def _clean(text: str) -> str:
@@ -190,54 +190,68 @@ def _arxiv(query, limit, space_only, women_lens, sort, token=None):
 
 
 # --------------------------------------------------------------------------- #
-# NASA ADS — https://ui.adsabs.harvard.edu/help/api/ (needs a free bearer token)
+# OpenAlex — https://docs.openalex.org/ (free, keyless)
 # --------------------------------------------------------------------------- #
-def _parse_ads(data: dict) -> list[dict]:
+def _openalex_abstract(inv: dict | None) -> str:
+    """OpenAlex ships abstracts as an inverted index {word: [positions]}; rebuild it."""
+    if not inv:
+        return ""
+    positions = sorted((i, word) for word, idxs in inv.items() for i in idxs)
+    return " ".join(word for _, word in positions)
+
+
+def _parse_openalex(data: dict) -> list[dict]:
     out = []
-    for d in (data.get("response") or {}).get("docs", []):
-        bib = d.get("bibcode")
-        if not bib:
+    for w in data.get("results", []):
+        oid = w.get("id") or ""
+        if not oid:
             continue
-        doi = (d.get("doi") or [""])[0]
+        doi_full = w.get("doi") or ""
+        loc = w.get("primary_location") or {}
+        venue = (loc.get("source") or {}).get("display_name") or ""
+        authors = ", ".join((a.get("author") or {}).get("display_name", "")
+                            for a in (w.get("authorships") or []))
         out.append({
-            "uid": f"ads:{bib}",
-            "title": _clean(" ".join(d.get("title") or ["Untitled"])).rstrip("."),
-            "authors": ", ".join(d.get("author") or []),
-            "year": str(d.get("year") or ""),
-            "venue": d.get("pub") or "",
-            "abstract": _clean(d.get("abstract") or ""),
-            "doi": doi,
-            "url": f"https://ui.adsabs.harvard.edu/abs/{urllib.parse.quote(bib)}",
-            "source": "NASA ADS",
-            "cited_by": int(d.get("citation_count") or 0),
+            "uid": f"openalex:{oid.rsplit('/', 1)[-1]}",
+            "title": _clean(w.get("display_name") or "Untitled").rstrip("."),
+            "authors": authors,
+            "year": str(w.get("publication_year") or ""),
+            "venue": venue,
+            "abstract": _clean(_openalex_abstract(w.get("abstract_inverted_index"))),
+            "doi": doi_full.replace("https://doi.org/", ""),
+            "url": doi_full or loc.get("landing_page_url") or oid,
+            "source": "OpenAlex",
+            "cited_by": int(w.get("cited_by_count") or 0),
         })
     return out
 
 
-def _ads(query, limit, space_only, women_lens, sort, token=None):
-    if not token:
-        raise RuntimeError("NASA ADS token not configured")
-    q = _epmc_query(query, space_only, women_lens)  # same boolean+phrase syntax as EPMC
-    fl = "bibcode,title,author,year,pub,doi,abstract,citation_count"
-    url = ("https://api.adsabs.harvard.edu/v1/search/query"
-           f"?q={urllib.parse.quote(q)}&rows={limit}&fl={fl}")
-    if _ADS_SORT.get(sort):
-        url += "&sort=" + urllib.parse.quote(_ADS_SORT[sort])
-    data = json.loads(_get(url, headers={"Authorization": f"Bearer {token}"}))
-    return _parse_ads(data), int((data.get("response") or {}).get("numFound") or 0)
+def _openalex(query, limit, space_only, women_lens, sort, token=None):
+    # Comma separates filters in OpenAlex, so keep it out of the search value.
+    q = _epmc_query(query.replace(",", " "), space_only, women_lens)
+    filt = urllib.parse.quote(f"title_and_abstract.search:{q}", safe=":")
+    select = ("id,doi,display_name,publication_year,cited_by_count,authorships,"
+              "primary_location,abstract_inverted_index")
+    url = (f"https://api.openalex.org/works?filter={filt}"
+           f"&per_page={limit}&select={select}")
+    if _OPENALEX_SORT.get(sort):
+        url += "&sort=" + urllib.parse.quote(_OPENALEX_SORT[sort], safe=":")
+    data = json.loads(_get(url))
+    return _parse_openalex(data), int((data.get("meta") or {}).get("count") or 0)
 
 
 _FETCHERS = {"Europe PMC": _europepmc, "bioRxiv/medRxiv": _preprints,
-             "arXiv": _arxiv, "NASA ADS": _ads}
+             "arXiv": _arxiv, "OpenAlex": _openalex}
 
 
 def search(query: str, sources=SOURCES, limit: int = 25, space_only: bool = True,
-           women_lens: bool = False, sort: str = "relevance", ads_token: str | None = None):
+           women_lens: bool = False, sort: str = "relevance"):
     """Search the given sources. Returns (results, errors, totals).
 
     `totals` maps each reached source to its full match count. A failure in one source
-    lands in `errors` and never kills the others. Results are de-duplicated by uid across
-    sources (the same paper can appear in both Europe PMC and the preprint index).
+    lands in `errors` and never kills the others. Results are de-duplicated across sources
+    by DOI (falling back to uid) — the same paper can appear in Europe PMC and OpenAlex
+    under different ids.
     """
     query = (query or "").strip()
     if not query:
@@ -245,18 +259,23 @@ def search(query: str, sources=SOURCES, limit: int = 25, space_only: bool = True
     results, errors, totals = [], {}, {}
     for name in sources:
         try:
-            rows, total = _FETCHERS[name](query, limit, space_only, women_lens,
-                                          sort, ads_token)
+            rows, total = _FETCHERS[name](query, limit, space_only, women_lens, sort)
             results.extend(rows)
             totals[name] = total
         except Exception as exc:  # noqa: BLE001 — one source down != whole search down
             errors[name] = str(exc)
 
-    seen, deduped = set(), []
+    seen_doi, seen_uid, deduped = set(), set(), []
     for p in results:
-        if p["uid"] not in seen:
-            seen.add(p["uid"])
-            deduped.append(p)
+        doi = (p.get("doi") or "").lower().strip()
+        if doi and doi in seen_doi:
+            continue
+        if p["uid"] in seen_uid:
+            continue
+        if doi:
+            seen_doi.add(doi)
+        seen_uid.add(p["uid"])
+        deduped.append(p)
     results = deduped
 
     if sort == "cited":
