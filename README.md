@@ -12,9 +12,11 @@ it to CSV or BibTeX. No account, no tracking, no API keys.
 
 ## What it does
 
-- **Search two open databases at once**
+- **Search several open databases at once**
   - **Europe PMC** — biomedical & clinical literature (women's health, physiology, medicine)
+  - **bioRxiv / medRxiv** — preprints, catching brand-new work before journal publication
   - **arXiv** — bioengineering, physics, and space-science preprints
+  - **NASA ADS** *(optional, free key)* — the astrophysics & space-science index
 - **Mission-aligned starting points** — one-click searches like *sex differences in
   microgravity*, *bone density loss in female astronauts*, *reproductive health & space
   radiation*, *gender disparities in space science*.
@@ -39,6 +41,18 @@ py -m streamlit run app.py
 It opens in your browser at `http://localhost:8501`. (On macOS/Linux use `python3`
 instead of `py`.)
 
+### Optional: enable NASA ADS
+
+NASA ADS indexes astrophysics & space-science literature. To add it as a source:
+
+1. Sign in (free) at [ui.adsabs.harvard.edu](https://ui.adsabs.harvard.edu/) →
+   **Account → Settings → API Token → Generate a new key**.
+2. Copy `.streamlit/secrets.toml.example` to `.streamlit/secrets.toml` and paste your
+   token into `ADS_API_TOKEN` (or set an `ADS_API_TOKEN` environment variable).
+
+`secrets.toml` is git-ignored, so your token is never committed. Without a token, the
+app simply doesn't show NASA ADS as a source — everything else works.
+
 ## Project layout
 
 | File | Purpose |
@@ -52,9 +66,9 @@ instead of `py`.)
 
 ## Roadmap
 
-- More sources (NASA ADS, bioRxiv/medRxiv) — NASA ADS needs a free API key.
-- De-duplicate the same paper found in two databases.
-- Tag and filter your collection.
+- "Load more" pagination to page through all matches (currently up to 50 per source).
+- Tag and filter your saved collection.
+- Year-range and open-access filters.
 
 ## License
 

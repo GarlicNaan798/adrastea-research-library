@@ -5,6 +5,7 @@ Run:  py -m streamlit run app.py
 from __future__ import annotations
 
 import html
+import os
 
 import streamlit as st
 
@@ -15,6 +16,22 @@ import sources
 
 st.set_page_config(page_title="Adrastea Research Library",
                    page_icon="🛰️", layout="wide")
+
+
+def _ads_token() -> str | None:
+    """NASA ADS bearer token from env or .streamlit/secrets.toml (accessing st.secrets
+    raises when no secrets file exists, so guard it)."""
+    tok = os.environ.get("ADS_API_TOKEN")
+    if tok:
+        return tok.strip()
+    try:
+        return (st.secrets.get("ADS_API_TOKEN") or "").strip() or None
+    except Exception:
+        return None
+
+
+ADS_TOKEN = _ads_token()
+AVAIL_SOURCES = tuple(sources.SOURCES) + (("NASA ADS",) if ADS_TOKEN else ())
 
 # Mission-aligned starting points. With the space scope on, these stay topic-focused —
 # the scope supplies the "in space" context, so results narrow to the mission.
@@ -42,13 +59,14 @@ def run_search(query: str) -> None:
     query = (query or "").strip()
     if not query:
         return
-    srcs = tuple(st.session_state.get("src_sel") or sources.SOURCES)
+    srcs = tuple(st.session_state.get("src_sel") or AVAIL_SOURCES)
     limit = int(st.session_state.get("limit_sel", 20))
     space_only = bool(st.session_state.get("space_only", True))
     women_lens = bool(st.session_state.get("women_lens", False))
     sort = st.session_state.get("sort_sel", "relevance")
     with st.spinner(f"Searching {', '.join(srcs)}…"):
-        res, err, tot = sources.search(query, srcs, limit, space_only, women_lens, sort)
+        res, err, tot = sources.search(query, srcs, limit, space_only, women_lens,
+                                       sort, ADS_TOKEN)
     st.session_state.update(results=res, errors=err, totals=tot, query=query)
 
 
@@ -73,11 +91,15 @@ with st.sidebar:
     st.selectbox("Sort by", list(_SORT_LABELS), key="sort_sel",
                  format_func=_SORT_LABELS.get)
     st.divider()
-    st.multiselect("Sources", sources.SOURCES, default=list(sources.SOURCES),
+    st.multiselect("Sources", AVAIL_SOURCES, default=list(AVAIL_SOURCES),
                    key="src_sel",
-                   help="Europe PMC covers biomedical & women's-health literature; "
-                        "arXiv covers bioengineering, physics and space science.")
+                   help="Europe PMC — published biomedical literature. bioRxiv/medRxiv — "
+                        "preprints, brand-new work. arXiv — bioengineering & physics. "
+                        "NASA ADS — astrophysics & space (needs a free token).")
     st.slider("Results per source", 10, 50, 20, 5, key="limit_sel")
+    if not ADS_TOKEN:
+        st.caption("💡 Add a free **NASA ADS** token to also search the astrophysics & "
+                   "space-science index — see the README.")
     st.divider()
     st.caption("Adrastea is a non-profit working to bridge the gender gap in space. "
                "This tool searches open scholarly databases — no account, no tracking. "

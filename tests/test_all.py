@@ -79,6 +79,42 @@ def test_db_roundtrip():
             os.remove(path)
 
 
+def test_preprint_label():
+    # A Europe PMC preprint (SRC:PPR) should be badged by its server, not "Europe PMC"
+    # real Europe PMC records nest the preprint server under bookOrReportDetails
+    ppr = {"resultList": {"result": [{
+        "id": "PPR813641", "source": "PPR",
+        "bookOrReportDetails": {"publisher": "bioRxiv"},
+        "title": "Osteoblast mechanotransduction in microgravity.",
+        "authorString": "Roe J.", "pubYear": "2024", "doi": "10.1101/2024.01.01.123",
+    }]}}
+    p = sources._parse_epmc(ppr)[0]
+    assert p["source"] == "bioRxiv"
+    assert p["uid"] == "epmc:PPR:PPR813641"
+    assert p["venue"] == "bioRxiv"  # falls back to server name when no journal
+
+
+ADS_SAMPLE = {"response": {"numFound": 4321, "docs": [
+    {"bibcode": "2024npjMG..10...5S", "title": ["Bone loss in <b>microgravity</b>"],
+     "author": ["Smith, A.", "Doe, J."], "year": "2024", "pub": "npj Microgravity",
+     "doi": ["10.1038/s41526-024-00001"], "abstract": "We study bone.",
+     "citation_count": 12},
+    {"title": ["no bibcode -> skipped"]},
+]}}
+
+
+def test_parse_ads():
+    rows = sources._parse_ads(ADS_SAMPLE)
+    assert len(rows) == 1, "doc without a bibcode must be skipped"
+    p = rows[0]
+    assert p["uid"] == "ads:2024npjMG..10...5S"
+    assert p["source"] == "NASA ADS"
+    assert p["title"] == "Bone loss in microgravity"  # markup stripped
+    assert p["authors"] == "Smith, A., Doe, J."
+    assert p["cited_by"] == 12
+    assert p["url"].startswith("https://ui.adsabs.harvard.edu/abs/")
+
+
 def test_clean_markup():
     # Europe PMC entity-encoded markup must not reach the UI as literal tags
     assert sources._clean("&lt;b&gt;Simulated&lt;/b&gt; microgravity") == "Simulated microgravity"
