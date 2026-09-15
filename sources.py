@@ -7,6 +7,9 @@ Sources (all keyless):
   * arXiv            — bioengineering / physics / space-science preprints.
   * OpenAlex         — ~240M works across all publishers, with citation data. Broadens
                        coverage of women's-health / disparities / bioengineering literature.
+  * NASA OSDR        — NASA's Open Science Data Repository (GeneLab): spaceflight biology
+                       *datasets* (omics, physiology), not papers. Already all space-bio,
+                       so it ignores the space/women scoping toggles.
 
 Two precision levers keep the research team out of hundreds of unrelated papers:
   * space_only  — AND a spaceflight/microgravity clause onto every query (default on).
@@ -27,13 +30,14 @@ import time
 import urllib.parse
 import urllib.request
 import xml.etree.ElementTree as ET
+from datetime import datetime, timezone
 
 _UA = "AdrasteaResearchLibrary/0.3 (Adrastea non-profit; research discovery)"
 _ATOM = {"a": "http://www.w3.org/2005/Atom"}
 _ARXIV_NS = "{http://arxiv.org/schemas/atom}"
 _OPENSEARCH_TOTAL = "{http://a9.com/-/spec/opensearch/1.1/}totalResults"
 
-SOURCES = ("Europe PMC", "bioRxiv/medRxiv", "arXiv", "OpenAlex")
+SOURCES = ("Europe PMC", "bioRxiv/medRxiv", "arXiv", "OpenAlex", "NASA OSDR")
 SORTS = ("relevance", "cited", "newest")
 
 # Domain-scoping clauses. Europe PMC and NASA ADS share boolean+phrase syntax; arXiv fields
@@ -240,8 +244,61 @@ def _openalex(query, limit, space_only, women_lens, sort, token=None):
     return _parse_openalex(data), int((data.get("meta") or {}).get("count") or 0)
 
 
+# --------------------------------------------------------------------------- #
+# NASA OSDR / GeneLab — https://osdr.nasa.gov/ (space-biology datasets, keyless)
+# --------------------------------------------------------------------------- #
+def _parse_osdr(data: dict) -> list[dict]:
+    out = []
+    for hit in ((data.get("hits") or {}).get("hits") or []):
+        s = hit.get("_source") or {}
+        acc = s.get("Accession") or s.get("Study Identifier")
+        if not acc:
+            continue
+        title = s.get("Study Title") or s.get("Study Publication Title") or acc
+        # author list is double-space separated (e.g. "Braun JL  Hockey BL"); some
+        # records mangle names with stray commas ("Charles,R,Farber") — tidy both.
+        authors = ", ".join(
+            " ".join(re.sub(r"[,]+", " ", a).split())
+            for a in re.split(r"\s{2,}", (s.get("Study Publication Author List") or "").strip())
+            if a.strip())
+        organism = s.get("organism") or ""
+        if isinstance(organism, list):  # OSDR returns organism as a string or a list
+            organism = ", ".join(str(o) for o in organism)
+        rd = s.get("Study Public Release Date")
+        try:
+            year = str(datetime.fromtimestamp(float(rd), timezone.utc).year) if rd else ""
+        except (ValueError, TypeError, OSError):
+            year = ""
+        out.append({
+            "uid": f"osdr:{acc}",
+            "title": _clean(title).rstrip("."),
+            "authors": authors,
+            "year": year,
+            "venue": f"NASA OSDR dataset · {organism}" if organism else "NASA OSDR dataset",
+            "abstract": _clean(s.get("Study Description")
+                               or s.get("Study Protocol Description") or ""),
+            "doi": "",
+            "url": f"https://osdr.nasa.gov/bio/repo/data/studies/{acc}",
+            "source": "NASA OSDR",
+            "cited_by": 0,
+        })
+    return out
+
+
+def _osdr(query, limit, space_only, women_lens, sort):
+    # OSDR is entirely space-biology data — the scope toggles don't apply; the user's
+    # term does the topical filtering. Datasets have no citation count or DOI.
+    url = ("https://osdr.nasa.gov/osdr/data/search"
+           f"?term={urllib.parse.quote(query)}&size={limit}")
+    data = json.loads(_get(url))
+    total = (data.get("hits") or {}).get("total") or 0
+    if isinstance(total, dict):  # newer Elasticsearch wraps it as {"value": N}
+        total = total.get("value") or 0
+    return _parse_osdr(data), int(total)
+
+
 _FETCHERS = {"Europe PMC": _europepmc, "bioRxiv/medRxiv": _preprints,
-             "arXiv": _arxiv, "OpenAlex": _openalex}
+             "arXiv": _arxiv, "OpenAlex": _openalex, "NASA OSDR": _osdr}
 
 
 def search(query: str, sources=SOURCES, limit: int = 25, space_only: bool = True,

@@ -77,7 +77,8 @@ with st.sidebar:
                    key="src_sel",
                    help="Europe PMC — published biomedical literature. bioRxiv/medRxiv — "
                         "preprints, brand-new work. arXiv — bioengineering & physics. "
-                        "OpenAlex — broad cross-publisher coverage with citation data.")
+                        "OpenAlex — broad cross-publisher coverage. NASA OSDR — spaceflight "
+                        "biology datasets (not papers).")
     st.slider("Results per source", 10, 50, 20, 5, key="limit_sel")
     st.divider()
     st.caption("Adrastea is a non-profit working to bridge the gender gap in space. "

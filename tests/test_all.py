@@ -120,6 +120,32 @@ def test_parse_openalex():
     assert p["cited_by"] == 12
 
 
+OSDR_SAMPLE = {"hits": {"total": 69, "hits": [
+    {"_source": {
+        "Accession": "OSD-661",
+        "Study Title": "Countering muscle and bone loss with spaceflight.",
+        "Study Description": "We examined 30 days of spaceflight.",
+        "Study Publication Author List": "Braun JL  Charles,R,Farber  Yumol JL",
+        "organism": ["Homo sapiens (Human)"],  # OSDR sometimes returns a list
+        "Study Public Release Date": 1698192000.0,  # 2023
+    }},
+    {"_source": {"Study Title": "no accession -> skipped"}},
+]}}
+
+
+def test_parse_osdr():
+    rows = sources._parse_osdr(OSDR_SAMPLE)
+    assert len(rows) == 1, "study without an accession must be skipped"
+    p = rows[0]
+    assert p["uid"] == "osdr:OSD-661"
+    assert p["source"] == "NASA OSDR"
+    assert p["year"] == "2023"  # unix timestamp -> year
+    # double-space split; stray commas in "Charles,R,Farber" tidied to spaces
+    assert p["authors"] == "Braun JL, Charles R Farber, Yumol JL"
+    assert p["venue"] == "NASA OSDR dataset · Homo sapiens (Human)"  # list flattened
+    assert p["url"].endswith("/studies/OSD-661")
+
+
 def test_clean_markup():
     # Europe PMC entity-encoded markup must not reach the UI as literal tags
     assert sources._clean("&lt;b&gt;Simulated&lt;/b&gt; microgravity") == "Simulated microgravity"
