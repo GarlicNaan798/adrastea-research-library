@@ -8,6 +8,10 @@ in space.
 Search five open scholarly databases at once, save what matters into a collection, and
 export it to CSV or BibTeX. No account, no tracking, no API keys.
 
+### 🔭 Use it now → **[adrastea-research.streamlit.app](https://adrastea-research.streamlit.app)**
+
+No install — just open the link in any browser.
+
 ![Adrastea](brand/adrastea-mark.svg)
 
 ## What it does
@@ -31,8 +35,8 @@ Export it to keep it; import the CSV later to pick up where you left off.
 
 ## Use it
 
-**As a website (easiest):** once it's deployed (see below), just share the URL — anyone
-can use it in their browser, no install.
+**As a website (easiest):** open **[adrastea-research.streamlit.app](https://adrastea-research.streamlit.app)** —
+anyone can use it in their browser, no install. (To run your own copy, see *Deploy* below.)
 
 **Run it locally:** you need [Python 3.10+](https://www.python.org/downloads/).
 
