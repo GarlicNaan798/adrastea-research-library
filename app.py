@@ -34,6 +34,7 @@ st.session_state.setdefault("results", [])
 st.session_state.setdefault("errors", {})
 st.session_state.setdefault("totals", {})
 st.session_state.setdefault("query", "")
+st.session_state.setdefault("collection", {})  # uid -> paper, private to this session
 
 
 def run_search(query: str) -> None:
@@ -53,7 +54,7 @@ def run_search(query: str) -> None:
 
 
 def _note_cb(uid: str, key: str) -> None:
-    db.set_note(uid, st.session_state[key])
+    db.set_note(st.session_state.collection, uid, st.session_state[key])
 
 
 def _on_preset() -> None:
@@ -89,11 +90,12 @@ with st.sidebar:
     st.divider()
     st.caption("Adrastea is a non-profit working to bridge the gender gap in space. "
                "This tool searches open scholarly databases — no account, no tracking. "
-               "Saved papers stay in a local file on your machine.")
+               "Your collection is private to this browser session; export it to keep it.")
 
 brand.header()
+store = st.session_state.collection
 search_tab, coll_tab = st.tabs(
-    ["Search", f"My Collection ({len(db.saved_uids())})"])
+    ["Search", f"My Collection ({len(store)})"])
 
 # --------------------------------------------------------------------------- #
 # Search
@@ -133,7 +135,7 @@ with search_tab:
         sort_txt = _SORT_LABELS[st.session_state.get("sort_sel", "relevance")].lower()
         st.caption(f"{total:,} papers match ({breakdown}) · showing top "
                    f"{len(results)} · sorted by {sort_txt}{scope_txt}")
-        saved = db.saved_uids()
+        saved = db.saved_uids(store)
         for p in results:
             with st.container(border=True):
                 st.markdown(f"#### {html.escape(p['title'])}")
@@ -159,7 +161,7 @@ with search_tab:
                               use_container_width=True)
                 elif b1.button("＋ Save", key=f"s_{p['uid']}",
                                use_container_width=True):
-                    db.save(p)
+                    db.save(store, p)
                     st.rerun()
                 if p["url"]:
                     b2.link_button("Open ↗", p["url"], use_container_width=True)
@@ -171,10 +173,21 @@ with search_tab:
 # --------------------------------------------------------------------------- #
 with coll_tab:
     st.write("")
-    saved = db.list_saved()
+    with st.expander("Import a collection you exported earlier (CSV)"):
+        up = st.file_uploader("Import CSV", type="csv", key="import_csv",
+                              label_visibility="collapsed")
+        if up is not None and st.session_state.get("imported_name") != up.name:
+            added = sum(db.save(store, row)
+                        for row in export.from_csv(up.getvalue().decode("utf-8", "replace")))
+            st.session_state["imported_name"] = up.name
+            st.success(f"Imported {added} new paper(s).")
+            st.rerun()
+
+    saved = db.list_saved(store)
     if not saved:
-        st.info("Your collection is empty. Save papers from the Search tab and they'll "
-                "appear here — stored locally, exportable to CSV or BibTeX.")
+        st.info("Your collection is empty. Save papers from the Search tab — they live in "
+                "this browser session. Export to CSV/BibTeX to keep them, or import a CSV "
+                "you saved earlier.")
     else:
         d1, d2, _ = st.columns([1, 1, 3])
         d1.download_button("⬇ CSV", export.to_csv(saved),
@@ -199,5 +212,5 @@ with coll_tab:
                 if p["url"]:
                     b1.link_button("Open ↗", p["url"], use_container_width=True)
                 if b2.button("Remove", key=f"rm_{p['uid']}", use_container_width=True):
-                    db.remove(p["uid"])
+                    db.remove(store, p["uid"])
                     st.rerun()

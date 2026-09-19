@@ -8,7 +8,6 @@ tests fail loudly if either provider changes shape in a way we don't handle.
 """
 import os
 import sys
-import tempfile
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -63,20 +62,27 @@ def test_parse_arxiv():
 
 
 def test_db_roundtrip():
-    fd, path = tempfile.mkstemp(suffix=".db")
-    os.close(fd)  # empty file is a valid (empty) sqlite db
-    try:
-        paper = sources._parse_epmc(EPMC_SAMPLE)[0]
-        assert db.save(paper, path) is True
-        assert db.save(paper, path) is False, "dedup: same uid must not double-insert"
-        assert db.saved_uids(path) == {paper["uid"]}
-        db.set_note(paper["uid"], "cite in grant", path)
-        assert db.list_saved(path)[0]["note"] == "cite in grant"
-        db.remove(paper["uid"], path)
-        assert db.list_saved(path) == []
-    finally:
-        if os.path.exists(path):
-            os.remove(path)
+    store = {}
+    paper = sources._parse_epmc(EPMC_SAMPLE)[0]
+    assert db.save(store, paper) is True
+    assert db.save(store, paper) is False, "dedup: same uid must not double-insert"
+    assert db.saved_uids(store) == {paper["uid"]}
+    db.set_note(store, paper["uid"], "cite in grant")
+    assert db.list_saved(store)[0]["note"] == "cite in grant"
+    db.remove(store, paper["uid"])
+    assert db.list_saved(store) == []
+
+
+def test_csv_roundtrip():
+    # export a saved paper to CSV, re-import it, and confirm it survives + dedups
+    a = sources._parse_epmc(EPMC_SAMPLE)[0]
+    rows = export.from_csv(export.to_csv([a]))
+    assert len(rows) == 1
+    assert rows[0]["title"] == a["title"]
+    assert rows[0]["uid"].startswith("import:")
+    store = {}
+    assert db.save(store, rows[0]) is True
+    assert db.save(store, rows[0]) is False  # re-import dedups by rebuilt uid
 
 
 def test_preprint_label():

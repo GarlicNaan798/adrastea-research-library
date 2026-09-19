@@ -17,6 +17,25 @@ def to_csv(papers: list[dict]) -> str:
     return buf.getvalue()
 
 
+def from_csv(text: str) -> list[dict]:
+    """Parse a previously-exported CSV back into paper dicts (for re-importing a
+    collection). The uid is rebuilt from the DOI, URL, or title so re-imports dedup."""
+    rows = []
+    for r in csv.DictReader(io.StringIO(text)):
+        key = (r.get("doi") or r.get("url") or r.get("title") or "").strip().lower()
+        if not key:
+            continue
+        rows.append({
+            "uid": f"import:{key}",
+            "title": r.get("title", ""), "authors": r.get("authors", ""),
+            "year": r.get("year", ""), "venue": r.get("venue", ""), "abstract": "",
+            "doi": r.get("doi", ""), "url": r.get("url", ""),
+            "source": r.get("source", "") or "Imported",
+            "cited_by": 0, "note": r.get("note", ""),
+        })
+    return rows
+
+
 def _cite_key(p: dict, used: set[str]) -> str:
     first = (p.get("authors", "").split(",")[0] or "anon").strip()
     surname = re.sub(r"[^A-Za-z]", "", first.split()[-1] if first.split() else "anon")

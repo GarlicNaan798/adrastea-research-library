@@ -1,68 +1,36 @@
-"""Local SQLite collection of saved papers. Single file, zero config, dedup by uid.
+"""In-session collection of saved papers — a uid -> paper dict.
 
-Every function takes an optional `path` so tests can point at a temp DB (or ":memory:"
-won't persist across connections, so tests use a temp file).
+Backed by st.session_state (see app.py), so each visitor's collection is private and
+needs no server or shared file. That's what makes the app safe to host publicly.
+Persistence is by CSV/BibTeX export and CSV re-import (see export.py).
+
+Functions operate on a plain dict so they stay unit-testable without a Streamlit runtime.
 """
 from __future__ import annotations
 
-import sqlite3
 import time
-from contextlib import contextmanager
-from pathlib import Path
-
-DB_PATH = Path(__file__).with_name("collection.db")
-_COLS = ("uid", "title", "authors", "year", "venue",
-         "abstract", "doi", "url", "source", "note")
 
 
-@contextmanager
-def _conn(path=None):
-    """Open a connection, ensure the schema, commit on success, and always close.
-
-    `with sqlite3.connect(...)` only manages the transaction — it leaves the handle
-    open, which locks the file on Windows. This closes it.
-    """
-    c = sqlite3.connect(str(path or DB_PATH))
-    c.row_factory = sqlite3.Row
-    c.execute("""CREATE TABLE IF NOT EXISTS papers(
-        uid TEXT PRIMARY KEY, title TEXT, authors TEXT, year TEXT, venue TEXT,
-        abstract TEXT, doi TEXT, url TEXT, source TEXT, note TEXT DEFAULT '',
-        saved_at REAL)""")
-    try:
-        yield c
-        c.commit()
-    finally:
-        c.close()
-
-
-def save(paper: dict, path=None) -> bool:
-    """Insert if new. Returns False (and changes nothing) if the uid is already saved."""
-    with _conn(path) as c:
-        if c.execute("SELECT 1 FROM papers WHERE uid=?", (paper["uid"],)).fetchone():
-            return False
-        c.execute(
-            f"INSERT INTO papers({','.join(_COLS)},saved_at) "
-            f"VALUES({','.join('?' * len(_COLS))},?)",
-            tuple(str(paper.get(k, "")) for k in _COLS) + (time.time(),))
+def save(store: dict, paper: dict) -> bool:
+    """Add if new. Returns False (changes nothing) if the uid is already saved."""
+    if paper["uid"] in store:
+        return False
+    store[paper["uid"]] = {**paper, "note": paper.get("note", ""), "saved_at": time.time()}
     return True
 
 
-def remove(uid: str, path=None) -> None:
-    with _conn(path) as c:
-        c.execute("DELETE FROM papers WHERE uid=?", (uid,))
+def remove(store: dict, uid: str) -> None:
+    store.pop(uid, None)
 
 
-def set_note(uid: str, note: str, path=None) -> None:
-    with _conn(path) as c:
-        c.execute("UPDATE papers SET note=? WHERE uid=?", (note, uid))
+def set_note(store: dict, uid: str, note: str) -> None:
+    if uid in store:
+        store[uid]["note"] = note
 
 
-def list_saved(path=None) -> list[dict]:
-    with _conn(path) as c:
-        return [dict(r) for r in
-                c.execute("SELECT * FROM papers ORDER BY saved_at DESC")]
+def list_saved(store: dict) -> list[dict]:
+    return sorted(store.values(), key=lambda p: p.get("saved_at", 0), reverse=True)
 
 
-def saved_uids(path=None) -> set[str]:
-    with _conn(path) as c:
-        return {r["uid"] for r in c.execute("SELECT uid FROM papers")}
+def saved_uids(store: dict) -> set[str]:
+    return set(store)
