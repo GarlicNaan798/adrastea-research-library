@@ -22,8 +22,9 @@ No install — just open the link in any browser.
   - **arXiv** — bioengineering, physics, and space-science preprints
   - **OpenAlex** — ~240M works across all publishers, with citation data
   - **NASA OSDR / GeneLab** — spaceflight-biology *datasets* (omics, physiology)
-- **Precision toggles** — a default-on *space scope* keeps results on-mission, and an
-  opt-in *women's-health lens* narrows to sex differences, reproductive and maternal health.
+- **Precision toggles** — a default-on *space scope* keeps results on-mission, and a
+  *women's-health lens* (also on by default) narrows to sex differences, reproductive and
+  maternal health. Turn it off to also see male-subject studies — the disparity itself.
 - **One-click topics** — pills like *bone density loss*, *reproductive health*,
   *radiation exposure*, *muscle atrophy*.
 - **A collection worth keeping** — save papers, add notes, and export to **CSV** or

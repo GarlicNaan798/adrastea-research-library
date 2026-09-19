@@ -73,10 +73,10 @@ with st.sidebar:
     st.toggle("🛰️ Space research only", value=True, key="space_only",
               help="Keep only papers about spaceflight, microgravity, astronauts, etc. "
                    "Cuts out the ~99% of biomedical results with no space context.")
-    st.toggle("♀ Women's-health focus", value=False, key="women_lens",
-              help="Further narrow to sex differences, female physiology, reproductive "
-                   "and maternal health. Off by default so male-subject studies — the "
-                   "disparity itself — stay visible.")
+    st.toggle("♀ Women's-health focus", value=True, key="women_lens",
+              help="On by default for Adrastea's mission — narrows to sex differences, "
+                   "female physiology, reproductive and maternal health. Turn off to also "
+                   "see male-subject studies (the disparity itself).")
     st.selectbox("Sort by", list(_SORT_LABELS), key="sort_sel",
                  format_func=_SORT_LABELS.get)
     st.divider()
