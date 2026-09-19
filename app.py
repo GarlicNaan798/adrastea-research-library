@@ -56,6 +56,12 @@ def _note_cb(uid: str, key: str) -> None:
     db.set_note(uid, st.session_state[key])
 
 
+def _on_preset() -> None:
+    sel = st.session_state.get("preset_pills")
+    if sel:
+        run_search(sel)
+
+
 # --------------------------------------------------------------------------- #
 # Sidebar — search scope + about
 # --------------------------------------------------------------------------- #
@@ -94,19 +100,20 @@ search_tab, coll_tab = st.tabs(
 # --------------------------------------------------------------------------- #
 with search_tab:
     st.write("")
-    st.markdown('<span class="meta">Start here</span>', unsafe_allow_html=True)
-    cols = st.columns(4)
-    for i, preset in enumerate(PRESETS):
-        if cols[i % 4].button(preset, key=f"preset_{i}", use_container_width=True):
-            run_search(preset)
-
     with st.form("search", clear_on_submit=False):
         c1, c2 = st.columns([5, 1])
         q = c1.text_input("Search", value=st.session_state.query,
-                          placeholder="e.g. immune function female astronauts",
+                          placeholder="Search five databases — e.g. immune function "
+                                      "female astronauts",
                           label_visibility="collapsed")
-        if c2.form_submit_button("Search", use_container_width=True, type="primary"):
-            run_search(q)
+        submitted = c2.form_submit_button("Search", use_container_width=True,
+                                          type="primary")
+    if submitted:
+        run_search(q)
+
+    st.markdown('<span class="meta">Popular topics</span>', unsafe_allow_html=True)
+    st.pills("Popular topics", PRESETS, selection_mode="single", key="preset_pills",
+             on_change=_on_preset, label_visibility="collapsed")
 
     for src, msg in st.session_state.errors.items():
         st.warning(f"{src} couldn't be reached: {msg}")
@@ -135,7 +142,7 @@ with search_tab:
                                 ("…" if len(p["authors"]) > 140 else "")),
                     p["year"], html.escape(p["venue"])) if x)
                 cite = f" · cited {p['cited_by']}" if p["cited_by"] else ""
-                st.markdown(f'<span class="badge">{p["source"]}</span> '
+                st.markdown(f'{brand.source_badge(p["source"])} '
                             f'<span class="meta">{meta}{cite}</span>',
                             unsafe_allow_html=True)
                 ab = p["abstract"]
@@ -182,7 +189,7 @@ with coll_tab:
                 meta = " · ".join(x for x in (
                     html.escape(p["authors"][:140]), p["year"],
                     html.escape(p["venue"])) if x)
-                st.markdown(f'<span class="badge">{p["source"]}</span> '
+                st.markdown(f'{brand.source_badge(p["source"])} '
                             f'<span class="meta">{meta}</span>', unsafe_allow_html=True)
                 key = f"note_{p['uid']}"
                 st.text_input("Note", value=p["note"], key=key,
