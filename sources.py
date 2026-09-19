@@ -188,7 +188,9 @@ def _arxiv(query, limit, space_only, women_lens, sort, token=None):
     url = ("http://export.arxiv.org/api/query"
            f"?search_query={q}&start=0&max_results={limit}"
            f"&sortBy={_ARXIV_SORT.get(sort, 'relevance')}&sortOrder=descending")
-    xml_text = _get(url, timeout=10)  # secondary source — fail fast, don't stall the UI
+    # arXiv's CDN 406s requests without an explicit Accept; timeout short (fail fast).
+    xml_text = _get(url, timeout=10,
+                    headers={"Accept": "application/atom+xml,application/xml;q=0.9,*/*;q=0.8"})
     total = int(ET.fromstring(xml_text).findtext(_OPENSEARCH_TOTAL) or 0)
     return _parse_arxiv(xml_text), total
 
