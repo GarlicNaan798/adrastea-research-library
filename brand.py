@@ -46,6 +46,11 @@ _STYLE = f"""
 html, body, [class*="st-"], input, textarea, select, button {{
     font-family: 'Inter', -apple-system, 'Segoe UI', Roboto, sans-serif;
 }}
+/* Keep Streamlit's Material icons on their icon font — otherwise the broad rule above
+   turns ligatures into raw text (e.g. the sidebar collapse control rendering
+   "keyboard_double_arrow_left"), which also makes the collapsed sidebar impossible to
+   reopen. */
+[data-testid="stIconMaterial"] {{ font-family: 'Material Symbols Rounded' !important; }}
 h1, h2, h3 {{ font-family: 'Fraunces', Georgia, serif; letter-spacing: -0.01em; }}
 h1 {{ font-weight: 600; }} h2, h3 {{ font-weight: 500; }}
 /* Result-card titles stay sans for a dense, scannable list */
@@ -54,8 +59,10 @@ h4 {{ font-family: 'Inter', sans-serif; font-weight: 600; font-size: 1.05rem;
 
 .block-container {{ max-width: 1040px; padding-top: 2rem; padding-bottom: 4rem; }}
 
-#MainMenu, [data-testid="stToolbar"], [data-testid="stDecoration"],
-.stDeployButton, footer {{ display: none !important; }}
+/* Hide the menu/deploy chrome — but NOT the whole toolbar, which contains the sidebar
+   expand button (hiding it made a collapsed sidebar impossible to reopen). */
+#MainMenu, [data-testid="stMainMenu"], [data-testid="stDecoration"],
+[data-testid="stDeployButton"], .stDeployButton, footer {{ display: none !important; }}
 [data-testid="stHeader"] {{ background: transparent; }}
 
 /* Header */
