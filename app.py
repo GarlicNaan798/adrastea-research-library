@@ -117,8 +117,9 @@ with search_tab:
     st.pills("Popular topics", PRESETS, selection_mode="single", key="preset_pills",
              on_change=_on_preset, label_visibility="collapsed")
 
-    for src, msg in st.session_state.errors.items():
-        st.warning(f"{src} couldn't be reached: {msg}")
+    if st.session_state.errors:
+        st.caption("⚠ Temporarily unavailable: "
+                   f"{', '.join(st.session_state.errors)} — showing the other sources.")
 
     results = st.session_state.results
     if st.session_state.query and not results:
