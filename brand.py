@@ -96,7 +96,7 @@ h4 {{ font-family: 'Inter', sans-serif; font-weight: 600; font-size: 1.05rem;
 /* Buttons — only the primary Search keeps the accent; the rest are quiet */
 .stButton > button, .stDownloadButton > button, [data-testid="stLinkButton"] a {{
     border-radius:8px; box-shadow:none; font-weight:500; font-size:.85rem;
-    min-height:0; padding:.32rem .8rem; }}
+    min-height:0; padding:.32rem .8rem; white-space:nowrap; }}
 .stButton > button[kind="secondary"], .stDownloadButton > button,
 [data-testid="stLinkButton"] a {{
     border:1px solid rgba(35,33,28,.16); color:{INK}; background:transparent; }}

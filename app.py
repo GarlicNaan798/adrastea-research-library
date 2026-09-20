@@ -156,7 +156,7 @@ with search_tab:
                             st.write(ab)
                 else:
                     st.caption("No abstract available.")
-                b1, b2, _ = st.columns([1, 1, 4])
+                b1, b2, _ = st.columns([1.3, 1.3, 3.4])
                 if p["uid"] in saved:
                     b1.button("✓ In collection", key=f"s_{p['uid']}", disabled=True,
                               use_container_width=True)
@@ -190,7 +190,7 @@ with coll_tab:
                 "this browser session. Export to CSV/BibTeX to keep them, or import a CSV "
                 "you saved earlier.")
     else:
-        d1, d2, _ = st.columns([1, 1, 3])
+        d1, d2, _ = st.columns([1.3, 1.3, 3.4])
         d1.download_button("⬇ CSV", export.to_csv(saved),
                            "adrastea_collection.csv", "text/csv",
                            use_container_width=True)
@@ -209,7 +209,7 @@ with coll_tab:
                 st.text_input("Note", value=p["note"], key=key,
                               placeholder="Why this matters, where you cited it…",
                               on_change=_note_cb, args=(p["uid"], key))
-                b1, b2, _ = st.columns([1, 1, 4])
+                b1, b2, _ = st.columns([1.3, 1.3, 3.4])
                 if p["url"]:
                     b1.link_button("Open ↗", p["url"], use_container_width=True)
                 if b2.button("Remove", key=f"rm_{p['uid']}", use_container_width=True):
