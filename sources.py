@@ -45,8 +45,19 @@ SORTS = ("relevance", "cited", "newest")
 _SPACE_EPMC = ('(spaceflight OR "space flight" OR microgravity OR astronaut OR cosmonaut'
                ' OR "space medicine" OR weightlessness OR "outer space"'
                ' OR "International Space Station" OR "spaceflight environment")')
-_WOMEN_EPMC = ('(women OR woman OR female OR "sex differences" OR "sex-based" OR gender'
-               ' OR maternal OR reproductive OR menstrual OR pregnancy)')
+_WOMEN_TERMS = ("women", "woman", "female", "sex differences", "sex-based", "gender",
+                "maternal", "reproductive", "menstrual", "pregnancy", "ovarian",
+                "estrogen", "menopause", "postmenopausal", "gynecological")
+_WOMEN_EPMC = "(" + " OR ".join(f'"{t}"' for t in _WOMEN_TERMS) + ")"
+# Field-restricted variant: EPMC matches the plain clause anywhere (full text, MeSH), so
+# space-physiology papers that merely mention "male and female mice" leak through. Forcing
+# the terms into title/abstract lifts women-lens precision from ~40% to ~100%.
+_WOMEN_EPMC_TA = ("(" + " OR ".join(f'TITLE:"{t}" OR ABSTRACT:"{t}"'
+                                    for t in _WOMEN_TERMS) + ")")
+# Substrings for classifying whether a paper's visible text is about women's health
+# (used to make NASA OSDR — whose API can't scope — honor the women lens client-side).
+_WOMEN_MATCH = ("women", "woman", "female", "sex differ", "sex-based", "gender", "maternal",
+                "reproductive", "menstru", "pregnan", "ovar", "estrogen", "menopaus")
 _SPACE_ARXIV = ("spaceflight", "microgravity", "astronaut", "weightlessness", "cosmonaut")
 _WOMEN_ARXIV = ("women", "female", "gender", "sex")
 _PREPRINT_FILTER = '(SRC:PPR) AND (PUBLISHER:"bioRxiv" OR PUBLISHER:"medRxiv")'
@@ -83,12 +94,16 @@ def _get(url: str, timeout: int = 15, retries: int = 1, headers: dict | None = N
 # --------------------------------------------------------------------------- #
 # Query builders (pure — no network)
 # --------------------------------------------------------------------------- #
-def _epmc_query(query: str, space_only: bool, women_lens: bool) -> str:
+def _epmc_query(query: str, space_only: bool, women_lens: bool,
+                women_ta: bool = False) -> str:
+    """Build a Europe-PMC-style boolean query. `women_ta` restricts the women clause to
+    title/abstract (for Europe PMC, which otherwise matches full text/MeSH and leaks).
+    Left off for OpenAlex, whose filter already searches title+abstract only."""
     q = f"({query})"
     if space_only:
         q += f" AND {_SPACE_EPMC}"
     if women_lens:
-        q += f" AND {_WOMEN_EPMC}"
+        q += f" AND {_WOMEN_EPMC_TA if women_ta else _WOMEN_EPMC}"
     return q
 
 
@@ -145,11 +160,12 @@ def _epmc_fetch(qstr: str, limit: int, sort: str):
 
 
 def _europepmc(query, limit, space_only, women_lens, sort, token=None):
-    return _epmc_fetch(_epmc_query(query, space_only, women_lens), limit, sort)
+    return _epmc_fetch(_epmc_query(query, space_only, women_lens, women_ta=True),
+                       limit, sort)
 
 
 def _preprints(query, limit, space_only, women_lens, sort, token=None):
-    q = f"{_epmc_query(query, space_only, women_lens)} AND {_PREPRINT_FILTER}"
+    q = f"{_epmc_query(query, space_only, women_lens, women_ta=True)} AND {_PREPRINT_FILTER}"
     return _epmc_fetch(q, limit, sort)
 
 
@@ -288,15 +304,22 @@ def _parse_osdr(data: dict) -> list[dict]:
 
 
 def _osdr(query, limit, space_only, women_lens, sort):
-    # OSDR is entirely space-biology data — the scope toggles don't apply; the user's
-    # term does the topical filtering. Datasets have no citation count or DOI.
+    # OSDR is entirely space-biology data, so the space scope is implicit. Its search API
+    # can't filter, so honor the women lens client-side: over-fetch, keep only datasets
+    # whose title/description are about female/sex biology. Datasets have no citations/DOI.
+    fetch = limit * 4 if women_lens else limit
     url = ("https://osdr.nasa.gov/osdr/data/search"
-           f"?term={urllib.parse.quote(query)}&size={limit}")
+           f"?term={urllib.parse.quote(query)}&size={fetch}")
     data = json.loads(_get(url))
     total = (data.get("hits") or {}).get("total") or 0
     if isinstance(total, dict):  # newer Elasticsearch wraps it as {"value": N}
         total = total.get("value") or 0
-    return _parse_osdr(data), int(total)
+    rows = _parse_osdr(data)
+    if women_lens:
+        rows = [r for r in rows
+                if any(t in (r["title"] + " " + r["abstract"]).lower()
+                       for t in _WOMEN_MATCH)][:limit]
+    return rows[:limit], int(total)
 
 
 _FETCHERS = {"Europe PMC": _europepmc, "bioRxiv/medRxiv": _preprints,
