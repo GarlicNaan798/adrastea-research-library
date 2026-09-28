@@ -31,16 +31,27 @@ const LIVE_APP = /gender gap in space|Popular topics|Search five databases/i;
     }
 
     // Confirm the REAL app rendered (the sleep screen also lives inside the Streamlit
-    // shell, so [data-testid=stApp] is NOT a valid signal). Generous timeout to cover a
-    // cold container boot after waking.
-    try {
-      await page.getByText(LIVE_APP).first().waitFor({ state: "visible", timeout: 150000 });
-      console.log("Live app rendered.");
-    } catch {
+    // shell, so [data-testid=stApp] is NOT a valid signal). Waking from a deep sleep
+    // means a cold container boot + dependency install, which can take several minutes,
+    // so wait generously and reload once if the first attempt times out.
+    const appIsUp = async (timeout) => {
+      try {
+        await page.getByText(LIVE_APP).first().waitFor({ state: "visible", timeout });
+        return true;
+      } catch { return false; }
+    };
+    let up = await appIsUp(300000);            // 5 min — covers a cold boot after wake
+    if (!up) {
+      console.log("Not rendered yet; reloading and waiting once more...");
+      await page.reload({ waitUntil: "domcontentloaded", timeout: 60000 });
+      up = await appIsUp(180000);              // another 3 min
+    }
+    if (!up) {
       console.error("App did not render within the timeout — it may still be asleep "
-        + "(wake button missing/reworded, or a slow boot). Failing loudly.");
+        + "(wake button missing/reworded, or an unusually slow boot). Failing loudly.");
       process.exit(1);
     }
+    console.log("Live app rendered.");
 
     // Linger so the websocket session is fully established (a genuine "view").
     await page.waitForTimeout(15000);
