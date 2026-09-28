@@ -1,0 +1,42 @@
+name: keep-alive
+
+# Keeps the free Streamlit Community Cloud deployment from going to sleep: loads the app
+# in a headless browser on a schedule, which registers a real view and resets Streamlit's
+# inactivity timer (and wakes it if it had already dozed off). Public repo => free minutes.
+# NOTE: GitHub auto-disables scheduled workflows after 60 days with NO new commit to the
+# default branch; push any commit (or click "Enable workflow" in the Actions tab) to re-arm.
+
+on:
+  schedule:
+    - cron: "17 */3 * * *"      # every 3 hours (minute 17, off the top of the hour)
+  workflow_dispatch: {}         # allow manual runs from the Actions tab
+
+concurrency:
+  group: keep-alive
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install Playwright (chromium)
+        run: |
+          set -euo pipefail
+          npm init -y >/dev/null
+          npm install playwright@1.47.2 >/dev/null
+          npx playwright install --with-deps chromium
+
+      - name: Load the app (wake it if asleep, verify it rendered)
+        env:
+          APP_URL: "https://adrastea-research.streamlit.app"
+        run: node .github/scripts/keepalive.js
